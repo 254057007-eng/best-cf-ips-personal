@@ -103,6 +103,32 @@ class CollectorTests(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         VALIDATOR.validate_pool(path)
 
+    def test_region_quota_keeps_limits_drops_excluded(self):
+        locations = {
+            '1.2.3.1': 'JP', '1.2.3.2': 'JP', '1.2.4.1': 'JP',
+            '2.2.3.1': 'SG', '2.2.4.1': 'SG',
+            '3.2.3.1': 'US',
+            '4.2.3.1': 'HK', '5.2.3.1': 'KR', '6.2.3.1': 'TW',
+        }
+        result = COLLECTOR.apply_region_quota(locations)
+        self.assertEqual(
+            set(result.values()), {'JP', 'SG', 'US'},
+        )
+        self.assertNotIn('HK', result.values())
+        self.assertNotIn('KR', result.values())
+        self.assertNotIn('TW', result.values())
+        # 分散优先：同 /24 的 1.2.3.2 在配额充足时不与 1.2.3.1 同时入选
+        self.assertIn('1.2.3.1', result)
+        self.assertIn('1.2.4.1', result)
+
+    def test_region_quota_backfills_when_dispersion_insufficient(self):
+        locations = {
+            f'1.2.3.{i}': 'JP' for i in range(1, 10)
+        }
+        result = COLLECTOR.apply_region_quota(locations)
+        self.assertEqual(len(result), 8)
+        self.assertEqual(set(result.values()), {'JP'})
+
     def test_all_expected_source_examples_are_global_ipv4(self):
         for ip in ('1.1.1.1', '8.8.8.8', '104.16.0.1'):
             address = ipaddress.ip_address(ip)

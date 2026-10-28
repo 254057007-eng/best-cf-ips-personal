@@ -29,6 +29,13 @@ SOURCES: dict[str, str] = {
 }
 
 PORT: str = '443'
+# EDT 大号地址池精简（2026-10-28）：只保留这三个地区并限量，
+# 丢弃 HK/KR/TW；同地区优先跨 /24 分散，不足时用剩余 IP 补齐。
+REGION_QUOTA: dict[str, int] = {
+    'JP': 8,
+    'SG': 8,
+    'US': 4,
+}
 HEADERS: dict[str, str] = {
     'User-Agent': (
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
@@ -137,9 +144,46 @@ def enrich_locations(ips: set[str]) -> dict[str, str]:
     return locations
 
 
+def apply_region_quota(locations: dict[str, str]) -> dict[str, str]:
+    """Keep quota regions only, per-region limits, /24 dispersion.
+
+    For each quota region, prefer one IP per /24; if dispersion alone
+    cannot fill the quota, backfill with the remaining region IPs.
+    """
+    selected: dict[str, str] = {}
+    for region, quota in REGION_QUOTA.items():
+        region_ips = sorted(
+            (ip for ip, country in locations.items() if country == region),
+            key=ipaddress.ip_address,
+        )
+        used_24: set[str] = set()
+        picked = 0
+        for ip in region_ips:
+            if picked >= quota:
+                break
+            prefix24 = ip.rsplit('.', 1)[0]
+            if prefix24 in used_24:
+                continue
+            used_24.add(prefix24)
+            selected[ip] = region
+            picked += 1
+        for ip in region_ips:
+            if picked >= quota:
+                break
+            if ip in selected:
+                continue
+            selected[ip] = region
+            picked += 1
+    return selected
+
+
 def write_output(locations: dict[str, str]) -> None:
     """Write a stable, atomically replaced compatible output file."""
     if not locations:
+        raise ValueError('refuse_to_replace_output_with_empty_pool')
+
+    selected = apply_region_quota(locations)
+    if not selected:
         raise ValueError('refuse_to_replace_output_with_empty_pool')
 
     temporary = OUTPUT_FILE.with_suffix('.tmp')
@@ -147,8 +191,8 @@ def write_output(locations: dict[str, str]) -> None:
         output.write(
             f'bestips updated at#{beijing_timestamp()}\n'
         )
-        for ip in sorted(locations, key=ipaddress.ip_address):
-            output.write(f'{ip}:{PORT}#{locations[ip]}\n')
+        for ip in sorted(selected, key=ipaddress.ip_address):
+            output.write(f'{ip}:{PORT}#{selected[ip]}\n')
     temporary.replace(OUTPUT_FILE)
 
 
