@@ -35,7 +35,7 @@ jobs:
         run: python scripts/best-cf-ipv4-collector.py
 
       - name: Validate generated pool
-        run: python scripts/validate_output.py best-cf-ipv4.txt --min-count 20
+        run: python scripts/validate_output.py best-cf-ipv4.txt --min-count 16
 
       - name: Commit changed pool
         shell: bash

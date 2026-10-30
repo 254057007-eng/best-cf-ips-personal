@@ -33,8 +33,8 @@ PORT: str = '443'
 # 丢弃 HK/KR/TW；同地区优先跨 /24 分散，不足时用剩余 IP 补齐。
 REGION_QUOTA: dict[str, int] = {
     'JP': 8,
-    'SG': 8,
-    'US': 4,
+    'SG': 6,
+    'US': 6,
 }
 HEADERS: dict[str, str] = {
     'User-Agent': (
